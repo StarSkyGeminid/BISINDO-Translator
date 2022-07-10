@@ -1,6 +1,4 @@
-from tkinter import ttk
 import tkinter as tk
-import datetime
 import PIL.Image
 import PIL.ImageTk
 
@@ -53,7 +51,7 @@ class Main:
                 image=PIL.Image.fromarray(frame))
             self.videoFrame.configure(image=self.__photo)
 
-        self.__gui.after(5, self.__webcamView)
+        self.__gui.after(1, self.__webcamView)
         
     def __add(self):
         return
