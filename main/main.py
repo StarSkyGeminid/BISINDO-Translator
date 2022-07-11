@@ -6,7 +6,6 @@ import pandas as pd
 import csv
 import os
 
-
 class Main:
     """Class utama yang berfungsi untuk menampilkan GUI"""
 
