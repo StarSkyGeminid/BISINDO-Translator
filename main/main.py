@@ -19,7 +19,7 @@ class Main:
         self.__mp_holistic = mp.solutions.holistic
         self.__mp_drawing_styles = mp.solutions.drawing_styles
 
-        with open('./model.pkl', 'rb') as f:
+        with open('./dataset/model.pkl', 'rb') as f:
             self.__model = pickle.load(f)
 
     def start(self, videoSource=0):

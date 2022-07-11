@@ -54,7 +54,7 @@ class AddDataset:
         
     def __inputType(self, frame):
         alfabertLabel = tk.Label(frame, text="Huruf  :")
-        self.alfabertBox = ttk.Combobox(frame, values=self.value, width=10)
+        self.alfabertBox = ttk.Combobox(frame, width=10)
         
         self.alfabertBox['values'] = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z')
         self.alfabertBox.current(0)
@@ -73,9 +73,15 @@ class AddDataset:
             if self.count < -5:
                 self.timoutLabel['text'] = (
                     "Sampel berhasil ditambahkan!")
+                time.sleep(1)
+                self.timoutLabel['text'] = (
+                    "Memproses dataset...")
+                
                 self.write = False
                 maker = DatasetMaker()
                 maker.train()
+                self.timoutLabel['text'] = (
+                    "Dataset berhasil di perbarui!")
                 
                 break
             elif self.count >= 0:
@@ -89,7 +95,7 @@ class AddDataset:
         
         
     def __webcamView(self):
-        ret, frame = self.vid.get_frame(save=self.write, text=self.value)
+        ret, frame = self.vid.get_frame(save=self.write, text=self.alfabertBox.get())
 
         if ret:
             self.__photo = PIL.ImageTk.PhotoImage(

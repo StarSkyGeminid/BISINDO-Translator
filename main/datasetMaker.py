@@ -45,5 +45,5 @@ class DatasetMaker:
         self.export()
         
     def export(self):
-        with open('model.pkl', 'wb') as f:
+        with open('./dataset/model.pkl', 'wb') as f:
             pickle.dump(self.fit_models['rf'], f)
