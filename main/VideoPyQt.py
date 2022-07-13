@@ -8,6 +8,7 @@ import numpy as np
 import mediapipe as mp
 import os
 import csv
+from keras.models import load_model
 
 "Fix version of Qt with which opencv was compiled is not similar to the one used by PyQt5 causing a conflict."
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
@@ -20,18 +21,50 @@ class VideoThread(QThread):
 
     def __init__(self):
         super().__init__()
-        self._mp_drawing = mp.solutions.drawing_utils
-        self._mp_hands = mp.solutions.hands
 
+        self.__mp_drawing = mp.solutions.drawing_utils
+        self.__mp_drawing_styles = mp.solutions.drawing_styles
+        self.__mp_holistic = mp.solutions.holistic
+        
+        self.__config()
+        
         self._run_flag = True
+        
+    def __config(self):
+        # self.DATA_PATH = os.path.join('dataset')
+
+        # self.model = load_model("model-cnn-facerecognition.h5")
+        # self.actions = os.listdir(os.path.join(self.DATA_PATH))
+        self.colors = [(245, 117, 16), (117, 245, 16), (16, 117, 245),
+                       (245, 17, 116), (17, 245, 196), (116, 17, 245)]
+
+    def extract_keypoints(self, results):
+        pose = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark]).flatten(
+        ) if results.pose_landmarks else np.zeros(33*4)
+        face = np.array([[res.x, res.y, res.z] for res in results.face_landmarks.landmark]).flatten(
+        ) if results.face_landmarks else np.zeros(468*3)
+        lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten(
+        ) if results.left_hand_landmarks else np.zeros(21*3)
+        rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten(
+        ) if results.right_hand_landmarks else np.zeros(21*3)
+        return np.concatenate([pose, face, lh, rh])
+
+    def prob_viz(res, actions, input_frame, colors):
+        output_frame = input_frame.copy()
+        for num, prob in enumerate(res):
+            cv2.rectangle(output_frame, (0, 60+num*40),
+                        (int(prob*100), 90+num*40), colors[num], -1)
+            cv2.putText(output_frame, actions[num], (0, 85+num*40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        return output_frame
 
     def run(self, videoSource=0):
         cap = cv2.VideoCapture(videoSource)
-
+        sequence = []
         if not cap.isOpened():
             raise ValueError("Galat membuka sumber video", videoSource)
         else:
-            with self._mp_hands.Hands(min_detection_confidence=0.8, min_tracking_confidence=0.8) as hands:
+            with self.__mp_holistic.Holistic(min_detection_confidence=0.8, min_tracking_confidence=0.8) as Holistic:
                 while self._run_flag:
                     ret, cv_img = cap.read()
 
@@ -39,17 +72,21 @@ class VideoThread(QThread):
                         image = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
                         image.flags.writeable = False
 
-                        results = hands.process(image)
+                        results = Holistic.process(image)
 
                         image.flags.writeable = True
-                        image = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
+                        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-                        if results.multi_hand_landmarks:
-                            for hand in results.multi_hand_landmarks:
-                                self._mp_drawing.draw_landmarks(
-                                    cv_img, hand, self._mp_hands.HAND_CONNECTIONS)
-                        if ret:
-                            self.change_pixmap_signal.emit(cv_img)
+                        self.__mp_drawing.draw_landmarks(image, results.right_hand_landmarks, self.__mp_holistic.HAND_CONNECTIONS,
+                                                        landmark_drawing_spec=self.__mp_drawing_styles
+                                                        .get_default_hand_landmarks_style(),
+                                                        )
+
+                        self.__mp_drawing.draw_landmarks(image, results.left_hand_landmarks, self.__mp_holistic.HAND_CONNECTIONS,
+                                                        landmark_drawing_spec=self.__mp_drawing_styles
+                                                        .get_default_hand_landmarks_style(),
+                                                        )
+                        self.change_pixmap_signal.emit(image)
         cap.release()
 
     def stop(self):
@@ -61,27 +98,49 @@ class VideoThread(QThread):
 class DatasetCapturer(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
 
-    def __init__(self, letter):
+    def __init__(self, letter, totalSequence):
         super().__init__()
 
         self.letter = letter
-
-
-        self.DATA_PATH = os.path.join('dataset')
+        self.totalSequence = totalSequence
         
-        self.__config()
+        self.DATA_PATH = os.path.join('dataset')
 
         self.__mp_drawing = mp.solutions.drawing_utils
         self.__mp_drawing_styles = mp.solutions.drawing_styles
         self.__mp_holistic = mp.solutions.holistic
 
+        self.__autoCreateDir()
+        
+        self.lastNum = self.__newestDir()
+        
         self._run_flag = True
+    
+    def __autoCreateDir(self):
+        if not os.path.isdir(os.path.join(self.DATA_PATH)):
+            os.mkdir(self.DATA_PATH)
+        if not os.path.isdir(os.path.join(self.DATA_PATH, self.letter)):
+            os.mkdir(os.path.join(self.DATA_PATH, self.letter))
+            
+        os.mkdir(os.path.join(self.DATA_PATH, self.letter,
+                              str(self.__newestDir() + 1)))
 
-    def __config(self):
-        self.filePath = 'dataset.csv'
+    def __newestFile(self):
+        listFile = os.listdir(os.path.join(self.DATA_PATH, self.letter))
 
-        if not os.path.exists(self.filePath):
-            self.createFirstModel()
+        if listFile == []:
+            return 0
+
+        return max([int(f[:f.index('.')])
+                    for f in listFile])
+        
+    def __newestDir(self):
+        listFile = os.listdir(os.path.join(self.DATA_PATH, self.letter))
+
+        if listFile == []:
+            return 0
+
+        return max([int(f) for f in listFile])
 
     def createModelHeader(self):
         landmarks = ['class']
@@ -97,15 +156,19 @@ class DatasetCapturer(QThread):
     def extract_keypoints(self, results):
         pose = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark]).flatten(
         ) if results.pose_landmarks else np.zeros(33*4)
+        face = np.array([[res.x, res.y, res.z] for res in results.face_landmarks.landmark]).flatten(
+        ) if results.face_landmarks else np.zeros(468*3)
         lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten(
         ) if results.left_hand_landmarks else np.zeros(21*3)
         rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten(
         ) if results.right_hand_landmarks else np.zeros(21*3)
-        return np.concatenate([pose, lh, rh])
+        return np.concatenate([pose, face, lh, rh])
 
     def run(self, videoSource=0):
         cap = cv2.VideoCapture(videoSource)
-
+        
+        currentSeq = 0
+        
         if not cap.isOpened():
             raise ValueError("Galat membuka sumber video", videoSource)
         else:
@@ -113,31 +176,38 @@ class DatasetCapturer(QThread):
                 while self._run_flag:
                     ret, cv_img = cap.read()
 
-                    image = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
-                    image.flags.writeable = False
-
-                    results = Holistic.process(image)
-
-                    image.flags.writeable = True
-                    image = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
-
-                    self.__mp_drawing.draw_landmarks(image, results.right_hand_landmarks, self.__mp_holistic.HAND_CONNECTIONS,
-                                                     landmark_drawing_spec=self.__mp_drawing_styles
-                                                     .get_default_hand_landmarks_style(),
-                                                     )
-
-                    self.__mp_drawing.draw_landmarks(image, results.left_hand_landmarks, self.__mp_holistic.HAND_CONNECTIONS,
-                                                     landmark_drawing_spec=self.__mp_drawing_styles
-                                                     .get_default_hand_landmarks_style(),
-                                                     )
-
-                    if results.pose_landmarks:
-                        keypoints = self.extract_keypoints(results)  # NEW Export keypoints
-                        npy_path = os.path.join(self.DATA_PATH, self.letter)
-                        np.save(npy_path, keypoints)
-
                     if ret:
-                        self.change_pixmap_signal.emit(cv_img)
+                        image = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+                        image.flags.writeable = False
+
+                        results = Holistic.process(image)
+
+                        image.flags.writeable = True
+                        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+                        self.__mp_drawing.draw_landmarks(image, results.right_hand_landmarks, self.__mp_holistic.HAND_CONNECTIONS,
+                                                         landmark_drawing_spec=self.__mp_drawing_styles
+                                                         .get_default_hand_landmarks_style(),
+                                                         )
+
+                        self.__mp_drawing.draw_landmarks(image, results.left_hand_landmarks, self.__mp_holistic.HAND_CONNECTIONS,
+                                                         landmark_drawing_spec=self.__mp_drawing_styles
+                                                         .get_default_hand_landmarks_style(),
+                                                         )
+
+                        if results.pose_landmarks:
+                            if currentSeq < self.totalSequence:
+                                keypoints = self.extract_keypoints(
+                                    results) 
+                                npy_path = os.path.join(
+                                    self.DATA_PATH, self.letter, str(self.lastNum), str(currentSeq) + '.npy')
+                                np.save(npy_path, keypoints)
+                                
+                                currentSeq += 1
+                            else:
+                                break
+                                
+                        self.change_pixmap_signal.emit(image)
         cap.release()
 
     def stop(self):
@@ -152,8 +222,7 @@ class App(QWidget):
 
         self.setupUi()
 
-        self.waitNotification = 5
-        self.captureTime = 5
+        self.__init_capture_time()
 
         self.thread = VideoThread()
 
@@ -246,16 +315,18 @@ class App(QWidget):
             if self.waitNotification == 0:
                 self.captureDataset()
 
-        elif self.captureTime > 0:
-            self.captureTime -= 1
+        elif self.thread.isRunning():
             self.statusText.setText("Sedang mengambil sampel...")
+            
+        else:
+            self.webcamView()
+            self.__init_capture_time()
+            self.timers.stop()
 
-            if self.captureTime == 0:
-                self.webcamView()
-                self.captureTime = 5
-                self.waitNotification = 5
-                self.statusText.setText("")
-                self.timers.stop()
+    def __init_capture_time(self):
+        self.totalSequence = 30
+        self.waitNotification = 5
+        self.statusText.setText("")
 
     def webcamView(self):
         if self.thread is not VideoThread:
@@ -270,7 +341,7 @@ class App(QWidget):
             self.thread.stop()
 
         self.thread = DatasetCapturer(
-            letter=self.alfabertComBox.itemText(self.alfabertComBox.currentIndex()))
+            letter=self.alfabertComBox.itemText(self.alfabertComBox.currentIndex()), totalSequence=self.totalSequence)
         self.thread.change_pixmap_signal.connect(self.update_image)
         self.thread.start()
 
@@ -279,7 +350,7 @@ class App(QWidget):
         event.accept()
 
     def selectedLetter(self, index):
-        print(self.alfabertComBox.itemText(index))
+        print(self.alfabertComBox.itemText(self.alfabertComBox.currentIndex()))
 
     @pyqtSlot()
     def addDataset(self):
