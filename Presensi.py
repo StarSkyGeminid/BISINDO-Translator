@@ -33,9 +33,9 @@ class VideoThread(QThread):
     def __config(self):
         # self.DATA_PATH = os.path.join('dataset')
 
-        self.model = load_model("trained-model.h5")
-        self.label = np.load('labels.npy')
-        self.face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+        self.model = load_model("output/trained-model.h5")
+        self.label = np.load('output/labels.npy')
+        self.face_cascade = cv2.CascadeClassifier('haarcascade\haarcascade_frontalface_default.xml')
 
         # self.actions = os.listdir(os.path.join(self.DATA_PATH))
         self.colors = [(245, 117, 16), (117, 245, 16), (16, 117, 245),
@@ -276,7 +276,7 @@ class App(QWidget):
         self.downloadBtn.setText("Unduh Data")
         
     def downloadData(self):
-        fileName = "Data Presensi " + self.currentDate() + '-' + self.currentTime()
+        fileName = "Data-Presensi_" + self.currentDate() + ".csv"
         with open(fileName, 'w') as f:
             write = csv.writer(f)
             write.writerow(["Nama", "Waktu"])
